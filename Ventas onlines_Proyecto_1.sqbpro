@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><sqlb_project><db path="Ventas onlines_Proyecto_1.db" readonly="0" foreign_keys="1" case_sensitive_like="0" temp_store="0" wal_autocheckpoint="1000" synchronous="2"/><attached/><window><main_tabs open="structure browser query pragmas" current="2"/></window><tab_structure><column_width id="0" width="300"/><column_width id="1" width="0"/><column_width id="2" width="100"/><column_width id="3" width="1674"/><column_width id="4" width="0"/><expanded_item id="0" parent="1"/><expanded_item id="1" parent="1"/><expanded_item id="2" parent="1"/><expanded_item id="3" parent="1"/></tab_structure><tab_browse><table title="Ventas_linea" custom_title="0" dock_id="1" table="4,12:mainVentas_linea"/><dock_state state="000000ff00000000fd000000010000000200000533000002a0fc0100000001fb000000160064006f0063006b00420072006f00770073006500310100000000000005330000011100ffffff000002950000000000000004000000040000000800000008fc00000000"/><default_encoding codec=""/><browse_table_settings><table schema="main" name="Clientes_Cantidad" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_" freeze_columns="0"><sort/><column_widths><column index="1" value="85"/><column index="2" value="69"/><column index="3" value="117"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table><table schema="main" name="Clientes_Dinero_Compras" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_" freeze_columns="0"><sort/><column_widths><column index="1" value="85"/><column index="2" value="93"/><column index="3" value="117"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table><table schema="main" name="Ventas_linea" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_" freeze_columns="0"><sort/><column_widths><column index="1" value="75"/><column index="2" value="79"/><column index="3" value="280"/><column index="4" value="67"/><column index="5" value="156"/><column index="6" value="69"/><column index="7" value="85"/><column index="8" value="117"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table><table schema="main" name="online_retail" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_" freeze_columns="0"><sort/><column_widths><column index="1" value="75"/><column index="2" value="79"/><column index="3" value="280"/><column index="4" value="67"/><column index="5" value="156"/><column index="6" value="69"/><column index="7" value="85"/><column index="8" value="117"/></column_widths><filter_values><column index="0" value="581204"/></filter_values><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table></browse_table_settings></tab_browse><tab_sql><sql name="Consultas de análisis*">---- IDENTIFICANDO DATOS PARA LIMPIAR ------
+
+--- Precios 0 o menores 
+
+SELECT UnitPrice FROM online_retail
+WHERE UnitPrice &lt;= 0
+
+--- Registros de no productos
+
+SELECT DISTINCT(StockCode) FROM online_retail
+
+
+----- Productos más vendidos --------
+
+SELECT StockCode, Description, printf('%,d', SUM(Quantity)) AS Cantidad FROM online_retail
+GROUP BY StockCode, Description
+ORDER BY SUM(Quantity) DESC
+LIMIT 15
+
+---- Clientes que más compran
+
+SELECT CustomerID, printf('%,d', SUM(Quantity)) AS Cantidad, Country FROM online_retail
+WHERE CustomerID IS NOT NULL
+GROUP BY CustomerID, Country
+ORDER BY SUM(Quantity) DESC
+LIMIT 15
+
+-- Vista
+
+CREATE VIEW Clientes_Cantidad AS 
+SELECT CustomerID, printf('%,d', SUM(Quantity)) AS Cantidad, Country FROM online_retail
+WHERE CustomerID IS NOT NULL
+GROUP BY CustomerID, Country
+ORDER BY SUM(Quantity) DESC
+LIMIT 15
+
+--- Clientes que más gastan
+
+SELECT 
+    CustomerID, 
+    printf('$%,.2f', SUM(Quantity * UnitPrice)) AS Dinero_Total, 
+    Country
+FROM online_retail
+WHERE CustomerID IS NOT NULL 
+  AND InvoiceNo NOT LIKE 'C%'
+GROUP BY CustomerID
+ORDER BY SUM(Quantity * UnitPrice) DESC
+LIMIT 15;
+
+-- Vista
+
+CREATE VIEW Clientes_Dinero_Compras AS SELECT 
+    CustomerID, 
+    printf('$%,.2f', SUM(Quantity * UnitPrice)) AS Dinero_Total, 
+    Country
+FROM online_retail
+WHERE CustomerID IS NOT NULL 
+  AND InvoiceNo NOT LIKE 'C%'
+GROUP BY CustomerID
+ORDER BY SUM(Quantity * UnitPrice) DESC
+LIMIT 15;
+
+--- Join entre clientes que más compran y que más gastan
+
+SELECT c.CustomerID, c.Cantidad, d.Dinero_Total FROM Clientes_Cantidad c
+JOIN Clientes_Dinero_Compras d ON c.CustomerID = d.CustomerID
+GROUP BY c.CustomerID
+ORDER BY c.Cantidad, d.Dinero_Total DESC
+
+
+--------- Estacionalidad ---------------------
+
+-- Mes con más venta
+
+SELECT 
+    strftime('%m', InvoiceDate) AS Mes, 
+    printf('%,.2f', SUM(Quantity * UnitPrice)) AS Ingresos_Totales,
+    COUNT(DISTINCT InvoiceNo) AS Numero_Pedidos
+FROM online_retail
+WHERE InvoiceNo NOT LIKE 'C%' 
+  AND UnitPrice &gt; 0 
+  AND Quantity &gt; 0 
+GROUP BY Mes
+ORDER BY SUM(Quantity * UnitPrice) DESC
+
+-- Ventas por hora
+
+SELECT 
+    strftime('%H',InvoiceDate) AS Hora,
+    printf('%,.2f', SUM(Quantity * UnitPrice)) AS Ingresos_Totales,
+    COUNT(DISTINCT InvoiceNo) AS Numero_Pedidos
+FROM online_retail
+WHERE InvoiceNo NOT LIKE 'C%' 
+  AND UnitPrice &gt; 0 
+  AND Quantity &gt; 0 
+GROUP BY Hora
+ORDER BY SUM(Quantity * UnitPrice) DESC
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</sql><sql name="Limpieza*">------------ Limpieza --------------
+
+-- Identificar cosas que no son productos
+
+SELECT DISTINCT Description, StockCode
+FROM online_retail
+-- El operador GLOB busca patrones: [a-z] detecta cualquier minúscula
+WHERE Description GLOB '*[a-z]*' 
+ORDER BY Description;
+
+---- Eliminar precios que sean 0 o menores a 0
+
+CREATE VIEW Ventas_linea AS SELECT * FROM online_retail
+WHERE UnitPrice &gt; 0</sql><current_tab id="1"/></tab_sql></sqlb_project>
