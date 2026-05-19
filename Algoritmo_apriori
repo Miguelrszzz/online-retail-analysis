@@ -1,0 +1,33 @@
+
+  ##install.packages("arules")
+library(arules)
+
+# Creamos una lista donde cada elemento es un vector de productos por factura
+transacciones <- df_retail %>%
+  group_by(InvoiceNo) %>%
+  summarise(productos = list(Description))
+
+# Convertimos a objeto tipo 'transactions'
+basket <- as(transacciones$productos, "transactions")
+
+# Ejecutamos Apriori
+reglas <- apriori(basket, 
+                  parameter = list(supp = 0.01, conf = 0.7, minlen = 2))
+
+# Ordenar las reglas por 'lift' (el indicador de qué tan fuerte es la asociación)
+reglas_ordenadas <- sort(reglas, by = "lift", decreasing = TRUE)
+
+# Ver las mejores 10 reglas
+inspect(head(reglas_ordenadas, 10))
+
+## Visualizar
+
+install.packages("arulesViz")
+library(arulesViz)
+
+## Gráfico de red
+
+plot(reglas, method = "graph", engine = "htmlwidget")
+
+
+
