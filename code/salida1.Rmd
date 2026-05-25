@@ -1,0 +1,407 @@
+---
+title: "Ecosistema Analítico de Retail Online"
+subtitle: "Análisis de Cohortes, Segmentación RFM y Reglas de Asociación"
+author: "Miguel - Estadístico UCV"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float: true
+    code_folding: hide
+    number_sections: true
+---
+
+# Ecosistema Retail {.tabset .tabset-pills}
+
+## 1. Introducción y Limpieza de Datos
+
+Para este proyecto, la etapa de limpieza extrema y transformación de datos se realizó directamente en un motor de base de datos **SQLite**. Esto permitió optimizar el procesamiento de los miles de registros antes de su análisis estadístico en R.
+
+A continuación, se muestra cómo se estableció la conexión y se extrajo la data ya depurada (filtrando registros sin `CustomerID`, manejando valores nulos y eliminando transacciones duplicadas):
+
+```{r limpieza, message=FALSE, warning=FALSE}
+
+# 1. Cargar las librerías necesarias
+library(DBI)
+library(RSQLite)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(DT)
+
+# 1. Establecer la conexión con el archivo de base de datos
+# Cambia "mi_base_de_datos.db" por el nombre real de tu archivo
+
+conexion <- dbConnect(SQLite(), "C:/Users/Miguel/Desktop/Portafolio/Proyecto 1/Ventas onlines_Proyecto_1.db")
+
+# 2. Listar las tablas para verificar que todo está bien
+##dbListTables(conexion)
+
+# 3. Traer la tabla limpia a R (Usando el Query que planeamos)
+
+# Aquí puedes pegar el SELECT con la separación de fecha y hora
+
+Vista <- "SELECT * FROM Normalizada"
+
+df_retail <- dbGetQuery(conexion, Vista)
+
+## Para RFM
+
+RFM_d <- "SELECT * FROM RFM"
+RFM <- dbGetQuery(conexion, RFM_d)
+
+
+
+
+## tABLA
+
+datatable(
+  head(df_retail, 10), 
+  rownames = FALSE, # Elimina la columna de índices automáticos de R
+  options = list(
+    pageLength = 5,   # Muestra 5 filas por página por defecto para no saturar la pantalla
+    lengthMenu = c(5, 10, 15), # Permite al usuario elegir cuántas filas ver
+    dom = 'tp',       # Muestra solo la tabla y la paginación para un look más limpio
+    language = list(
+      url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json' # Controles en español
+    )
+  ),
+  class = 'cell-border stripe hover' # Bordes finos, filas alternas y efecto al pasar el mouse
+)
+
+
+
+```
+
+
+## Análisis de Cohortes {.tabset .tabset-pills}
+
+Para comprender el ciclo de vida y el abandono de los usuarios, agrupamos a los clientes según el mes de su primera transacción. El siguiente análisis muestra la matriz de retención relativa a lo largo del tiempo:
+
+```{r cohortes, message=FALSE, warning=FALSE}
+
+
+## Tipo de dato del dataframe
+
+##sapply(df_retail, class)
+
+## Transformar Fecha y Hora a Date
+
+df_retail <- df_retail %>%
+  mutate(Fecha = as.Date(Fecha))
+
+## Identificar cohortes
+
+df_cohortes <- df_retail %>%
+  group_by(CustomerID) %>%
+  mutate(Mes_Cohorte = floor_date(min(Fecha), "month")) %>%
+  ungroup()
+
+# 2. Calcular el mes de cada factura y el índice (distancia en meses)
+df_cohortes <- df_cohortes %>%
+  mutate(
+    Mes_Factura = floor_date(Fecha, "month"),
+    Indice_Mes = as.numeric(interval(Mes_Cohorte, Mes_Factura) %/% months(1))
+  )
+
+# 3. Agrupar para obtener la retención
+tabla_retencion <- df_cohortes %>%
+  group_by(Mes_Cohorte, Indice_Mes) %>%
+  summarise(n_clientes = n_distinct(CustomerID), .groups = 'drop') %>%
+  # Calcular el porcentaje basado en el mes 0 de cada cohorte
+  group_by(Mes_Cohorte) %>%
+  mutate(pct_retencion = n_clientes / first(n_clientes)) %>%
+  ungroup()
+
+
+## Grafico ggplot
+
+ggplot(tabla_retencion, aes(x = Indice_Mes, y = reorder(format(Mes_Cohorte, "%Y-%m"), desc(Mes_Cohorte)), fill = pct_retencion)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = scales::percent(pct_retencion, accuracy = 1)), size = 3) +
+  scale_fill_gradient(low = "#e3f2fd", high = "#1565c0", labels = scales::percent) +
+  labs(
+    title = "Análisis de Cohortes: Retención Mensual de Clientes",
+    subtitle = "Basado en el primer mes de compra (Online Retail Dataset)",
+    x = "Meses transcurridos desde la primera compra",
+    y = "Cohorte (Mes de Inicio)",
+    fill = "% Retención"
+  ) +
+  theme_minimal()
+
+```
+
+***Diagnóstico Estratégico de Retención***
+
+Retención Crítica Inicial: Se evidencia un comportamiento de "balde perforado" (leaky bucket) transversal en casi todas las cohortes de 2011, donde la retención promedio en el Mes 1 cae al 23,1%. Esto identifica una ventana de oportunidad crítica: el negocio necesita optimizar su estrategia de onboarding y fidelización durante los primeros 30 días posteriores a la primera compra.
+
+Lealtad Estacional: La cohorte de Diciembre 2010 destaca como el segmento de mayor valor y lealtad, manteniendo niveles de retención consistentemente superiores al 34% y alcanzando un repunte del 50% en el Mes 11 (Noviembre 2011). Esto demuestra que los usuarios adquiridos en campañas navideñas muestran una alta propensión a la recompra cíclica anual.
+
+Nota Técnica de Truncamiento: Las drásticas caídas en los periodos finales de las cohortes de finales de 2011 reflejan el sesgo de censura por derecha del dataset, ya que los registros concluyen en diciembre de 2011, limitando el tiempo de observación para los usuarios más recientes.
+
+## Análisis RFM
+
+```{r, echo=FALSE}
+
+
+library(tidyverse)
+library(lubridate)
+
+
+##sapply(RFM, class)
+##str(RFM$Ultima_Compra)
+
+## Transformar Fecha y Hora a Date
+
+RFM <- RFM %>%
+  mutate(Ultima_Compra = as.Date(Ultima_Compra))
+
+# 1. Definir la fecha de referencia fija del dataset (un día después de la última venta)
+fecha_referencia <- as.Date("2011-12-10")
+
+rfm_procesado <- RFM %>%
+  mutate(
+    Gasto_Total_Num = as.numeric(gsub(",", "", as.character(Gasto_Total))),
+    Ultima_Compra_Date = as.Date(Ultima_Compra)
+  ) %>%
+  filter(Gasto_Total_Num > 0 & !is.na(CustomerID)) %>%
+  mutate(
+    RecenciaDays = as.numeric(fecha_referencia - Ultima_Compra_Date)
+  )
+
+
+# 3. Calculo de quintiles
+
+rfm_scores <- rfm_procesado %>%
+  mutate(
+    R_Score = ntile(desc(RecenciaDays), 5),
+    F_Score = ntile(Ordenes_Totales, 5),
+    M_Score = ntile(Gasto_Total, 5)
+  )
+
+# 4. Clasificación refinada en 5 Segmentos de Negocio
+rfm_segmentado <- rfm_scores %>%
+  mutate(Segmento = case_when(
+    # Campeones: Top en todo
+    R_Score >= 4 & F_Score >= 4 & M_Score >= 4 ~ "Campeones (VIP)",
+    
+    # Leales: Buena recencia y alta frecuencia/gasto
+    R_Score >= 4 & F_Score >= 3 & M_Score >= 3 ~ "Clientes Leales",
+    
+    # Potenciales: Buena recencia pero frecuencia o gasto aún en desarrollo
+    R_Score >= 3 & (F_Score >= 2 | M_Score >= 2) ~ "Potencialmente Leales",
+    
+    # En Riesgo: Historial de compras alto/medio pero no han vuelto hace tiempo
+    R_Score <= 2 & (F_Score >= 3 | M_Score >= 3) ~ "En Riesgo / Alerta",
+    
+    # Perdidos: Puntuaciones bajas en todas las dimensiones
+    R_Score <= 2 & F_Score <= 2 & M_Score <= 2 ~ "Perdidos / Inactivos",
+    
+    # Cobertura por si queda algún caso intermedio
+    TRUE                                        ~ "Potencialmente Leales"
+  ))
+
+# 5. Agrupación cuantitativa para alimentar el gráfico
+resumen_segmentos <- rfm_segmentado %>%
+  count(Segmento) %>%
+  arrange(desc(n))
+
+# 6. Graficar la distribución con estética profesional
+ggplot(resumen_segmentos, aes(x = reorder(Segmento, n), y = n, fill = n)) +
+  geom_bar(stat = "identity", show.legend = FALSE, color = "black", linewidth = 0.3) +
+  # Etiquetas de texto corregidas con marcadores limpios
+  geom_text(aes(label = scales::comma(n, accuracy = 1, big.mark = ".", decimal.mark = ",")), 
+            hjust = -0.1, size = 4, color = "black", fontface = "bold") +
+  coord_flip() + 
+  # --- ESTA ES LA LÍNEA NUEVA QUE EXPANDE EL ESPACIO ---
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) + 
+  # -----------------------------------------------------
+  scale_fill_gradient(low = "#70A4FF", high = "#1565c0") +
+  labs(
+    title = "Distribución de Segmentos de Clientes (RFM)",
+    subtitle = "Estrategia comercial refinada basada en análisis de quintiles",
+    x = "Segmento Estratégico",
+    y = "Número de Clientes Únicos"
+  ) +
+  theme_classic() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text = element_text(size = 10, face = "bold")
+  )
+
+
+
+```
+
+
+
+***Predominio de Clientes en Desarrollo (Potencialmente Leales)***: Con 1.848 usuarios, este es el segmento más grande del negocio. Representa a clientes que han comprado recientemente y tienen un ticket o frecuencia media. Estratégicamente, no requieren campañas de descuento agresivas, sino tácticas de cross-selling o programas de puntos para empujarlos a convertirse en clientes "Leales" o "Campeones".
+
+***Alerta Crítica en Retención (En Riesgo / Alerta)***: El segundo grupo más numeroso concentra a 1.354 clientes. Este volumen es una señal de alarma importante: se trata de compradores de alto valor histórico (alta frecuencia o gran volumen de gasto) que llevan un periodo prolongado de inactividad. El negocio necesita desplegar campañas de reactivación urgentes (ej. cupones personalizados de retorno, encuestas de satisfacción) antes de que migren definitivamente a la competencia.
+
+***Estabilización de la Élite Comercial (Campeones y Clientes Leales)***: Juntos, los "Campeones (VIP)" (376) y los "Clientes Leales" (365) suman 741 usuarios estables. Aunque cuantitativamente son menores que los grupos anteriores, este núcleo dinámico suele sostener el mayor porcentaje del flujo de caja mensual (Principio de Pareto). Las acciones aquí deben enfocarse en beneficios exclusivos, lanzamientos anticipados y atención preferencial para blindar su fidelidad.
+
+***Eficiencia en el Gasto de Marketing (Perdidos / Inactivos)***: Con 374 usuarios, este segmento agrupa a clientes con baja frecuencia, bajo gasto y una recencia muy fría. Al estar claramente identificados y aislados, la estrategia óptima es minimizar el presupuesto publicitario destinado a ellos, evitando quemar recursos en reenganchar perfiles que estadísticamente ya abandonaron la marca.
+
+
+## Análisis de Canasta de Compra (Algoritmo Apriori)
+
+Para complementar el análisis conductual, se implementó el algoritmo Apriori con el fin de descubrir reglas de asociación e identificar qué productos tienden a comprarse juntos en la misma transacción.
+
+```{r apriori_final, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(arules)
+library(arulesViz)
+
+# 1. Agrupación de productos por factura
+transacciones <- df_retail %>%
+  group_by(InvoiceNo) %>%
+  summarise(productos = list(Description))
+
+# 2. Conversión a objeto tipo transactions
+basket <- as(transacciones$productos, "transactions")
+
+# 3. Ejecución del algoritmo en silencio (verbose = FALSE)
+reglas <- apriori(basket, 
+                  parameter = list(supp = 0.01, conf = 0.7, minlen = 2),
+                  control = list(verbose = FALSE))
+
+# 4. Ordenar reglas por el indicador 'lift'
+reglas_ordenadas <- sort(reglas, by = "lift", decreasing = TRUE)
+
+# 5. SALIDA HTML 1: Tabla interactiva
+inspectDT(head(reglas_ordenadas, 10))
+
+# 6. SALIDA HTML 2: Gráfico de red interactivo
+plot(head(reglas_ordenadas, 10), method = "graph", engine = "htmlwidget")
+
+```
+
+
+***Estrategias Comerciales Sugeridas:***
+
+- Empaquetamiento de Producto (Bundling): Crear un producto único llamado "Kit Huerto Aromático" que incluya los marcadores de Perejil, Tomillo, Romero y Albahaca a un precio sutilmente menor que comprados por separado. Esto acelera la decisión de compra en el checkout.
+
+- Diseño de Interfaz UX (Cross-selling): Si el sistema detecta que el usuario añade el marcador de perejil y tomillo, disparar un pop-up automático en la web que diga: "Completa tu colección: 95% de los diseñadores de huertos también añaden Marcador de Romero".
+
+- Gestión de Inventario (Stock): Las existencias de estos cuatro artículos deben estar perfectamente sincronizadas en el almacén. Si nos quedamos sin stock de Romero, romperemos la cadena de compra del trío, arriesgando un volumen de facturación que impacta directamente al 1% de las transacciones totales de la empresa.
+
+## Análisis de productos y clientes con SQL
+
+<h5 style="font-size: 1.4em; font-weight: bold; color: #2c3e50; margin-top: 15px; margin-bottom: 10px;">15 Productos más vendidos</h5>
+
+
+
+```{r, echo=FALSE}
+
+
+# 1. Definición de la consulta SQL para los productos más vendidos
+Productos_mas <- "SELECT StockCode, Description, SUM(Quantity) AS Cantidad 
+FROM online_retail
+GROUP BY StockCode, Description
+ORDER BY Cantidad DESC
+LIMIT 15"
+
+# 2. Ejecución de la consulta (Guardamos todo en minúsculas para evitar errores)
+productos_more <- dbGetQuery(conexion, Productos_mas)
+
+# 3. Renderizado de la tabla interactiva sin usar pipes de forma directa y segura
+tabla_productos <- DT::datatable(
+  productos_more, # Variables con nombres idénticos
+  rownames = FALSE,
+  options = list(
+    pageLength = 15, 
+    dom = 't', # Tabla limpia ideal para el Top 15
+    language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json')
+  ),
+  class = 'cell-border stripe hover'
+)
+
+# Aplicar separador de miles con puntos y 0 decimales a la columna Cantidad
+tabla_productos <- DT::formatRound(
+  tabla_productos,
+  columns = "Cantidad",
+  digits = 0,
+  interval = 3,
+  mark = "."
+)
+
+tabla_productos
+
+```
+
+
+<h5 style="font-size: 1.4em; font-weight: bold; color: #2c3e50; margin-top: 15px; margin-bottom: 10px;">15 Clientes que más compran y gastan</h5>
+
+
+```{r, echo=FALSE}
+
+Clientes_mas <- "SELECT c.CustomerID, c.Cantidad, d.Dinero_Total FROM Clientes_Cantidad c
+JOIN Clientes_Dinero_Compras d ON c.CustomerID = d.CustomerID
+GROUP BY c.CustomerID
+ORDER BY c.Cantidad, d.Dinero_Total DESC"
+
+# 2. Ejecución de la consulta
+Clientes_more <- dbGetQuery(conexion, Clientes_mas)
+
+
+DT::datatable(
+  Clientes_more,
+  rownames = FALSE,
+  options = list(
+    pageLength = 15, 
+    dom = 't',       
+    language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json')
+  ),
+  class = 'cell-border stripe hover'
+) %>% 
+  DT::formatCurrency("Dinero_Total", currency = "£ ", interval = 3, mark = ".", dec.mark = ",")
+
+
+```
+
+
+<h5 style="font-size: 1.4em; font-weight: bold; color: #2c3e50; margin-top: 15px; margin-bottom: 10px;">Mes con más ventas</h5>
+
+```{r, echo=FALSE}
+
+
+Mes_mas <- "SELECT 
+    strftime('%m', InvoiceDate) AS Mes,
+    SUM(Quantity * UnitPrice) AS Ingresos_Totales,
+    COUNT(DISTINCT InvoiceNo) AS Numero_Pedidos
+FROM online_retail
+WHERE InvoiceNo NOT LIKE 'C%' 
+  AND UnitPrice > 0 
+  AND Quantity > 0 
+GROUP BY Mes
+ORDER BY SUM(Quantity * UnitPrice) DESC"
+
+Mes_more <- dbGetQuery(conexion, Mes_mas)
+
+DT::datatable(
+  Mes_more,
+  rownames = FALSE,
+  options = list(
+    pageLength = 12, # Muestra los 12 meses de un solo golpe
+    dom = 't',       # Muestra solo la tabla limpia, sin buscadores innecesarios para 12 filas
+    language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json')
+  ),
+  class = 'cell-border stripe hover'
+) %>% 
+  DT::formatCurrency("Ingresos_Totales", currency = "£ ", interval = 3, mark = ".", dec.mark = ",")
+
+##Cerrar conexion
+dbDisconnect(conexion)
+
+```
+
+
+
+
+
+
+
