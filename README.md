@@ -71,7 +71,7 @@ Una tienda online necesita entender **cómo compran sus clientes** para decidir 
 ### Segmentos de clientes (RFM)
 
 | Segmento | Clientes | % de clientes |
-|---|---|---|---|
+|---|---|---|
 | [Campeones] | [376]
 | [Leales] | [365]
 | [Potencialmente leales] | [1.848] |
