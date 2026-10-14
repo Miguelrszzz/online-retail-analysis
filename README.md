@@ -3,6 +3,7 @@
 Análisis de transacciones de una tienda online con **SQLite** y **R**: calidad de datos, comportamiento de clientes (segmentación RFM y cohortes de retención) y productos que se compran juntos (algoritmo apriori).
 
 > **Autor:** Miguel Sanz · Data Analyst & BI Specialist · [LinkedIn](https://www.linkedin.com/in/miguel-sanz-ba9b5b300)
+> **Ver el reporte completo**: https://miguelrszzz.github.io/online-retail-analysis/outputs/reporte.html
 
 ---
 
@@ -52,13 +53,18 @@ Una tienda online necesita entender **cómo compran sus clientes** para decidir 
 - Cada cliente se puntúa por **recencia** (días desde su última compra), **frecuencia** (número de compras) y **valor monetario** (gasto total).
 - Con esas puntuaciones se agrupan en segmentos (campeones, leales, en riesgo, perdidos, etc.).
 
+- ![Segmentación RFM](outputs/RFM.png)
+
 **Análisis de cohortes**
 - Cada cliente se asigna a la **cohorte** de su primer mes de compra.
 - Se calcula cuántos clientes de cada cohorte vuelven a comprar en los meses siguientes, como porcentaje del tamaño inicial.
 
+- ![Cohortes de clientes](outputs/Cohortes.png)
+
 **Algoritmo apriori**
 - Se agrupan los productos por factura y se buscan combinaciones que se compran juntas.
-- Parámetros: soporte mínimo [X], confianza mínima [X].
+
+- ![Algoritmo a priori](outputs/Algoritmo.png)
 
 ## 6. Resultados
 
