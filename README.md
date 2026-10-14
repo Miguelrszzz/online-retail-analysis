@@ -16,10 +16,9 @@ Una tienda online necesita entender **cómo compran sus clientes** para decidir 
 
 ## 2. Datos
 
-- **Fuente:** [indicar origen, por ejemplo UCI Machine Learning Repository, *Online Retail*]
+- **Fuente:** [http://archive.ics.uci.edu/ml/datasets/Online+Retail]
 - **Periodo:** diciembre 2010 – diciembre 2011 (el último mes está incompleto)
-- **Tamaño:** [N filas] transacciones · [N] clientes · [N] productos
-- **Campos principales:** factura, producto, cantidad, fecha, precio, `CustomerID`, país
+- **Campos principales:** Número de factura, Código del producto, Descripción, Cantidad, Fecha de factura, Precio Unitario, ID del cliente, País
 
 ## 3. Herramientas
 
@@ -48,7 +47,6 @@ Una tienda online necesita entender **cómo compran sus clientes** para decidir 
 
 **Limpieza de datos**
 - Se excluyeron registros sin `CustomerID`, facturas canceladas y cantidades o precios no válidos.
-- Filas eliminadas: [N] de [N] ([X]%).
 
 **Segmentación RFM**
 - Cada cliente se puntúa por **recencia** (días desde su última compra), **frecuencia** (número de compras) y **valor monetario** (gasto total).
@@ -68,17 +66,15 @@ Una tienda online necesita entender **cómo compran sus clientes** para decidir 
 
 | Segmento | Clientes | % de clientes | % de ingresos |
 |---|---|---|---|
-| [Campeones] | [N] | [X]% | [X]% |
-| [Leales] | [N] | [X]% | [X]% |
-| [En riesgo] | [N] | [X]% | [X]% |
-| [Perdidos] | [N] | [X]% | [X]% |
+| [Campeones] | [376]
+| [Leales] | [365]
+| [Potencialmente leales] | [1.848] |
+| [En riesgo] | [1.354] |
 
-- [Hallazgo: qué porcentaje de ingresos aporta el segmento de mayor valor]
-- [Hallazgo: tamaño del segmento en riesgo]
+- [Hallazgo: Los clientes potencialmente leales abarcan la mayor cantidad de clientes 47%, por lo que se identifica una clientela a la que se hacer enfasis y así poder traer meyores beneficios.]
+- [Hallazgo: Los clientes en riesgo también representan un porcentaje alto, aproximadamente el 34%, se requiere identificar las causas que los ponen en riesgo y prestarles epecial atención. ]
 
 ### Retención de clientes por cohorte
-
-![Retención por cohorte](salidas/cohortes_retencion.png)
 
 - Entre **20% y 30%** de los clientes vuelve a comprar el mes siguiente a su primera compra.
 - La retención **se estabiliza** en torno a 20-30% en lugar de caer a cero: existe una base de clientes recurrentes.
@@ -89,16 +85,15 @@ Una tienda online necesita entender **cómo compran sus clientes** para decidir 
 
 ### Productos que se compran juntos
 
-- [Regla 1: si compra X, compra Y — soporte, confianza, lift]
-- [Regla 2: ...]
-- [Regla 3: ...]
+- Los Herb Marker (perejil, romero, tomillo y albahaca) se compran casi siempre en conjunto:
+  más del 93% de confianza y un lift cercano a 78, es decir, 78 veces más probable que se compren juntos.
 
 ## 7. Recomendaciones de negocio
 
-1. **Cuidar a los mejores clientes:** [acción para el segmento Campeones/Leales, a partir de tu RFM] y recuperar a los clientes en riesgo con ofertas de reactivación.
+1. **Cuidar a los mejores clientes:** Esto se puede lograr a través de promociones o descuentos exclusivos para clientes que sean Campeones y recuperar a los clientes en riesgo con ofertas de reactivación o marketing exclusivo para ellos.
 2. **Reforzar el mes 1:** lanzar una campaña de recompra pocas semanas después de la primera compra, que es cuando se pierde la mayor parte de los clientes.
 3. **Preparar el pico de fin de año:** asegurar inventario y promociones entre septiembre y noviembre.
-4. **Ofrecer combos:** usar las reglas de apriori para sugerir productos complementarios. [Concretar con tus reglas]
+4. **Ofrecer combos:** usar las reglas de apriori para sugerir productos complementarios. Por ejemplo hacer combos de productos herb maker. 
 
 ## 8. Cómo reproducirlo
 
